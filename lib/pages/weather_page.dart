@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:weather_app/models/weather_model.dart';
 import 'package:weather_app/service/weather_service.dart';
 
@@ -15,6 +16,12 @@ class _WeatherPageState extends State<WeatherPage> {
   // api key
   final _weatherService = WeatherService(apiKey: 'api_Key');
   Weather? _weather;
+
+  // New Search & Favorites State Variables
+  bool _isLoading = false;
+  List<String> _favorites = [];
+  final _searchController = TextEditingController();
+  late SharedPreferences _prefs;
 
   BoxDecoration getWeatherBackground(Weather? weather) {
     if (weather == null) {
@@ -113,17 +120,84 @@ class _WeatherPageState extends State<WeatherPage> {
     }
   }
 
-  Future<void> fetchWeather() async {
-    String cityname = await _weatherService.getCurrentCityName();
+  // Initialization: SharedPreferences & load last saved/GPS weather
+  Future<void> _initPrefsAndLoadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _favorites = _prefs.getStringList('favorites') ?? [];
+      });
+      
+      String? lastCity = _prefs.getString('last_city');
+      if (lastCity != null && lastCity.isNotEmpty) {
+        await fetchWeather(lastCity);
+      } else {
+        await fetchWeather();
+      }
+    } catch (e) {
+      debugPrint("Error initializing preferences: $e");
+      await fetchWeather();
+    }
+  }
+
+  // Fetch Weather - accepts optional city name parameter
+  Future<void> fetchWeather([String? cityname]) async {
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
-      final weather = await _weatherService.getWeather(cityname);
-      setState(() {
-        _weather = weather;
-      });
+      String nameToFetch = cityname ?? '';
+      if (nameToFetch.isEmpty) {
+        nameToFetch = await _weatherService.getCurrentCityName();
+      }
+
+      if (nameToFetch.isNotEmpty) {
+        final weather = await _weatherService.getWeather(nameToFetch);
+        setState(() {
+          _weather = weather;
+          _isLoading = false;
+        });
+        
+        // Save as last loaded city
+        if (mounted) {
+          await _prefs.setString('last_city', weather.cityName);
+        }
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      debugPrint(e.toString());
+      debugPrint("Error fetching weather: $e");
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load weather data: ${e.toString()}'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
+  }
+
+  // Toggle Favorite state
+  Future<void> _toggleFavorite(String city) async {
+    final cityUpper = city.toUpperCase();
+    setState(() {
+      if (_favorites.contains(cityUpper)) {
+        _favorites.remove(cityUpper);
+      } else {
+        _favorites.add(cityUpper);
+      }
+    });
+    await _prefs.setStringList('favorites', _favorites);
   }
 
   String getWeatherAnimation(String? mainCondition) {
@@ -154,62 +228,304 @@ class _WeatherPageState extends State<WeatherPage> {
   @override
   void initState() {
     super.initState();
-    fetchWeather();
+    _initPrefsAndLoadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // Search & Favorites bottom sheet
+  void _showSearchBottomSheet(BuildContext context) {
+    _searchController.clear();
+    Color textColor = Colors.white;
+    Color subTextColor = Colors.white70;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF0F2027),
+                      Color(0xFF203A43),
+                      Color(0xFF2C5364),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(30),
+                    topRight: Radius.circular(30),
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 1,
+                  ),
+                ),
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.white30,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Search City',
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _searchController,
+                      style: GoogleFonts.poppins(color: textColor),
+                      decoration: InputDecoration(
+                        hintText: 'Enter city name...',
+                        hintStyle: GoogleFonts.poppins(color: Colors.white38),
+                        prefixIcon: const Icon(Icons.search, color: Colors.white70),
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.08),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 16,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.1),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: const BorderSide(
+                            color: Colors.lightBlueAccent,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (value) {
+                        if (value.trim().isNotEmpty) {
+                          Navigator.pop(context);
+                          fetchWeather(value.trim());
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'FAVORITE CITIES',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 2,
+                            color: subTextColor,
+                          ),
+                        ),
+                        if (_favorites.isNotEmpty)
+                          Icon(
+                            Icons.favorite,
+                            color: Colors.redAccent.withValues(alpha: 0.8),
+                            size: 16,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_favorites.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20.0),
+                        child: Center(
+                          child: Text(
+                            'No favorite cities added yet',
+                            style: GoogleFonts.poppins(
+                              color: Colors.white38,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 250),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: _favorites.length,
+                          itemBuilder: (context, index) {
+                            final city = _favorites[index];
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.04),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 4,
+                                ),
+                                title: Text(
+                                  city,
+                                  style: GoogleFonts.poppins(
+                                    color: textColor,
+                                    fontWeight: FontWeight.w500,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.redAccent,
+                                  ),
+                                  onPressed: () async {
+                                    await _toggleFavorite(city);
+                                    setSheetState(() {});
+                                  },
+                                ),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  fetchWeather(city);
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Check if it's night to change app bar/text color themes dynamically
     bool isNight = _weather?.isNight ?? false;
     Color textColor = isNight ? Colors.white70 : Colors.black87;
     Color mainTemperatureColor = isNight ? Colors.white : Colors.black87;
 
     return Scaffold(
-      // Extend the body behind the AppBar so the gradient covers the full screen
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Weather App'),
+        title: Text(
+          'Weather App',
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
+            color: textColor,
+          ),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: textColor, // Adjusts back button/text color automatically
+        foregroundColor: textColor,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () => _showSearchBottomSheet(context),
+          ),
+        ],
       ),
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: getWeatherBackground(_weather), // Dynamic Background applied here
+        decoration: getWeatherBackground(_weather),
         child: SafeArea(
           child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // City Name (with Location Icon)
                 Icon(
                   Icons.location_on,
                   color: textColor.withValues(alpha: 0.6),
                   size: 24,
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  _weather?.cityName.toUpperCase() ?? 'LOADING...',
-                  style: GoogleFonts.poppins(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 3,
-                    color: textColor,
-                  ),
+
+                // City name with favorite heart button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 48), // Balancing spacer
+                    Expanded(
+                      child: Text(
+                        _weather?.cityName.toUpperCase() ?? 'LOADING...',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 3,
+                          color: textColor,
+                        ),
+                      ),
+                    ),
+                    if (_weather != null)
+                      IconButton(
+                        icon: Icon(
+                          _favorites.contains(_weather!.cityName.toUpperCase())
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          color: _favorites.contains(_weather!.cityName.toUpperCase())
+                              ? Colors.redAccent
+                              : textColor.withValues(alpha: 0.6),
+                        ),
+                        onPressed: () => _toggleFavorite(_weather!.cityName),
+                      )
+                    else
+                      const SizedBox(width: 48), // Balancing spacer when null
+                  ],
                 ),
 
                 const SizedBox(height: 20),
 
-                // Weather Animation
-                Lottie.asset(
-                  getWeatherAnimation(_weather?.mainCondition),
-                  height: 240, // Constrain size nicely
-                ),
+                // Loader or Weather Animation
+                _isLoading
+                    ? SizedBox(
+                        height: 240,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: textColor.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      )
+                    : Lottie.asset(
+                        getWeatherAnimation(_weather?.mainCondition),
+                        height: 240,
+                      ),
 
                 const SizedBox(height: 20),
 
-                // Temperature (Large, thin typography)
+                // Temperature
                 Text(
                   _weather != null ? '${_weather!.temperature.round()}°' : '',
                   style: GoogleFonts.poppins(
