@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 import 'package:weather_app/models/weather_model.dart';
 import 'package:weather_app/service/weather_service.dart';
@@ -112,7 +113,7 @@ class _WeatherPageState extends State<WeatherPage> {
     }
   }
 
-  fetchWeather() async {
+  Future<void> fetchWeather() async {
     String cityname = await _weatherService.getCurrentCityName();
 
     try {
@@ -121,7 +122,7 @@ class _WeatherPageState extends State<WeatherPage> {
         _weather = weather;
       });
     } catch (e) {
-      print(e);
+      debugPrint(e.toString());
     }
   }
 
@@ -181,13 +182,19 @@ class _WeatherPageState extends State<WeatherPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // City Name
+                // City Name (with Location Icon)
+                Icon(
+                  Icons.location_on,
+                  color: textColor.withValues(alpha: 0.6),
+                  size: 24,
+                ),
+                const SizedBox(height: 8),
                 Text(
                   _weather?.cityName.toUpperCase() ?? 'LOADING...',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 3,
                     color: textColor,
                   ),
                 ),
@@ -202,24 +209,27 @@ class _WeatherPageState extends State<WeatherPage> {
 
                 const SizedBox(height: 20),
 
-                // Temperature
+                // Temperature (Large, thin typography)
                 Text(
-                  _weather != null ? '${_weather!.temperature.round()}°C' : '',
-                  style: TextStyle(
-                    fontSize: 64,
-                    fontWeight: FontWeight.w300,
+                  _weather != null ? '${_weather!.temperature.round()}°' : '',
+                  style: GoogleFonts.poppins(
+                    fontSize: 88,
+                    fontWeight: FontWeight.w200,
                     color: mainTemperatureColor,
+                    height: 1.1,
                   ),
                 ),
+
+                const SizedBox(height: 4),
 
                 // Condition Text
                 Text(
                   _weather?.mainCondition.toUpperCase() ?? '',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 1.5,
-                    color: textColor,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 4,
+                    color: textColor.withValues(alpha: 0.8),
                   ),
                 ),
               ],
