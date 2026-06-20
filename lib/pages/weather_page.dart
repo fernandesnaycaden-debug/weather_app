@@ -187,6 +187,28 @@ class _WeatherPageState extends State<WeatherPage> {
     }
   }
 
+  // Helper to format current date and time elegantly
+  String _getFormattedDate() {
+    final now = DateTime.now();
+    const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    String weekday = weekdays[now.weekday - 1];
+    String month = months[now.month - 1];
+    int day = now.day;
+    
+    int hour = now.hour;
+    String ampm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    String minute = now.minute.toString().padLeft(2, '0');
+    
+    return '$weekday, $month $day • $hour:$minute $ampm';
+  }
+
   // Toggle Favorite state
   Future<void> _toggleFavorite(String city) async {
     final cityUpper = city.toUpperCase();
@@ -506,7 +528,20 @@ class _WeatherPageState extends State<WeatherPage> {
                   ],
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 4),
+
+                // Current Date & Time Display
+                Text(
+                  _getFormattedDate(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.5,
+                    color: textColor.withValues(alpha: 0.6),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
 
                 // Loader or Weather Animation
                 _isLoading
